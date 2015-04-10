@@ -21,12 +21,20 @@ import (
 	"fmt"
 	"io"
 	"net"
+	ossys "os"
 	"regexp"
+	"strings"
 	"time"
 
 	"code.google.com/p/gcfg"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/resource"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/cloudprovider"
+	"github.com/golang/glog"
 	"github.com/rackspace/gophercloud"
 	"github.com/rackspace/gophercloud/openstack"
+	"github.com/rackspace/gophercloud/openstack/blockstorage/v1/volumes"
+	"github.com/rackspace/gophercloud/openstack/compute/v2/extensions/volumeattach"
 	"github.com/rackspace/gophercloud/openstack/compute/v2/flavors"
 	"github.com/rackspace/gophercloud/openstack/compute/v2/servers"
 	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/lbaas/members"
@@ -34,11 +42,6 @@ import (
 	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/lbaas/pools"
 	"github.com/rackspace/gophercloud/openstack/networking/v2/extensions/lbaas/vips"
 	"github.com/rackspace/gophercloud/pagination"
-
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/api/resource"
-	"github.com/GoogleCloudPlatform/kubernetes/pkg/cloudprovider"
-	"github.com/golang/glog"
 )
 
 var ErrNotFound = errors.New("Failed to find object")
@@ -651,4 +654,154 @@ func (os *OpenStack) GetZone() (cloudprovider.Zone, error) {
 	glog.V(1).Infof("Current zone is %v", os.region)
 
 	return cloudprovider.Zone{Region: os.region}, nil
+}
+
+func (os *OpenStack) AttachDisk(diskName string) (string, error) {
+	disk, err := os.getVolume(diskName)
+	if err != nil {
+		return "", err
+	}
+	cClient, err := openstack.NewComputeV2(os.provider, gophercloud.EndpointOpts{
+		Region: os.region,
+	})
+
+	if err != nil || cClient == nil {
+		glog.Errorf("Unable to initialize nova client for region: %s", os.region)
+		return "", err
+	}
+
+	compute_id, err := os.getComputeIDbyHostname(cClient)
+	if err != nil || compute_id == "null" {
+		glog.Errorf("Unable to get minion's id by minion's hostname")
+		return "", err
+	}
+
+	if len(disk.Attachments) > 0 && disk.Attachments[0]["server_id"] != nil {
+		if compute_id == disk.Attachments[0]["server_id"] {
+			glog.Infof("Disk: %q is already attached to compute: %q\n", diskName, compute_id)
+			return disk.ID, nil
+		} else {
+			errMsg := fmt.Sprintf("Disk %q is attached to a different compute: %q, should be detached before proceeding", diskName, disk.Attachments[0]["server_id"])
+			glog.Errorf(errMsg)
+			return "", errors.New(errMsg)
+		}
+	}
+	// add read only flag here if possible spothanis
+	_, err = volumeattach.Create(cClient, compute_id, &volumeattach.CreateOpts{
+		VolumeID: disk.ID,
+	}).Extract()
+	if err != nil {
+		glog.Infof("Failed to attach %s volume to %s compute", diskName, compute_id)
+		return "", err
+	}
+	glog.Infof("Successfully attached %s volume to %s compute", diskName, compute_id)
+	return disk.ID, nil
+}
+
+func (os *OpenStack) DetachDisk(partialDiskId string) error {
+	disk, err := os.getVolume(partialDiskId)
+	if err != nil {
+		return err
+	}
+
+	cClient, err := openstack.NewComputeV2(os.provider, gophercloud.EndpointOpts{
+		Region: os.region,
+	})
+
+	compute_id, err := os.getComputeIDbyHostname(cClient)
+	if err != nil || compute_id == "" {
+		glog.Errorf("Unable to get minion's ip while detaching disk")
+		return err
+	}
+	if len(disk.Attachments) > 0 && disk.Attachments[0]["server_id"] != nil && compute_id == disk.Attachments[0]["server_id"] {
+		err = volumeattach.Delete(cClient, compute_id, disk.ID).ExtractErr()
+		if err != nil {
+			glog.Errorf("Failed to delete volume %s from compute %s attached %v\n", disk.ID, compute_id, err)
+			return err
+		}
+	} else {
+		errMsg := fmt.Sprintf("Disk: %s has no attachments or is not attached to compute: %s\n", disk.Name, compute_id)
+		glog.Errorf(errMsg)
+		return errors.New(errMsg)
+	}
+	return nil
+}
+
+//Takes a partial/full disk id or diskname
+
+func (os *OpenStack) getVolume(diskName string) (volumes.Volume, error) {
+	sClient, err := openstack.NewBlockStorageV1(os.provider, gophercloud.EndpointOpts{
+		Region: os.region,
+	})
+
+	var volume volumes.Volume
+	if err != nil || sClient == nil {
+		glog.Errorf("Unable to initialize cinder client for region: %s", os.region)
+		return volume, err
+	}
+
+	err = volumes.List(sClient, nil).EachPage(func(page pagination.Page) (bool, error) {
+		vols, err := volumes.ExtractVolumes(page)
+		if err != nil {
+			glog.Errorf("Failed to extract volumes: %v\n", err)
+			return false, err
+		} else {
+			for _, v := range vols {
+				glog.Infof("%s\t%s\t%v\n", v.ID, v.Name, v.Attachments)
+				if v.Name == diskName || strings.Contains(v.ID, diskName) {
+					volume = v
+					return true, nil
+				}
+			}
+		}
+		//if it reached here then no disk with the given name was found.
+		errmsg := fmt.Sprintf("Unable to find disk: %s in region %s", diskName, os.region)
+		return false, errors.New(errmsg)
+	})
+	if err != nil {
+		glog.Errorf("Error occured getting volume: %s\n", diskName)
+		return volume, err
+	}
+	return volume, err
+}
+
+func (os *OpenStack) getComputeIDbyHostname(cClient *gophercloud.ServiceClient) (string, error) {
+
+	hostname, err := ossys.Hostname()
+
+	if err != nil {
+		glog.Errorf("Failed to get Minion's hostname: %v\n", err)
+		return "", err
+	}
+
+	i, ok := os.Instances()
+	if !ok {
+		glog.Errorf("Unable to get instances")
+		return "", errors.New("Unable to get instances")
+	}
+
+	srvs, err := i.List(".")
+	if err != nil {
+		glog.Errorf("Failed to list servers: %v", err)
+		return "", err
+	}
+
+	if len(srvs) == 0 {
+		glog.Errorf("Found no servers in the region")
+		return "", errors.New("Found no servers in the region")
+	}
+	glog.Infof("found servers: %v\n", srvs)
+
+	for _, srvname := range srvs {
+		server, err := getServerByName(cClient, srvname)
+		if err != nil {
+			return "", err
+		} else {
+			if server.Metadata["hostname"] != nil && server.Metadata["hostname"] == hostname {
+				fmt.Printf("found server: %s with host :%s\n", server.Name, hostname)
+				return server.ID, nil
+			}
+		}
+	}
+	return "", err
 }

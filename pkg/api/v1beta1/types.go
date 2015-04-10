@@ -121,6 +121,8 @@ type VolumeSource struct {
 	Glusterfs *GlusterfsVolumeSource `json:"glusterfs" description:"Glusterfs volume that will be mounted on the host machine "`
 	// PersistentVolumeClaimVolumeSource represents a reference to a PersistentVolumeClaim in the same namespace
 	PersistentVolumeClaimVolumeSource *PersistentVolumeClaimVolumeSource `json:"persistentVolumeClaim,omitempty" description:"a reference to a PersistentVolumeClaim in the same namespace"`
+	// CinderVolume represents a cinder volume attached and mounted on kubelets host machine
+	CinderVolume *CinderVolumeSource `json:"cinderVolume" description:"Cinder volume that will be attached and mounted on the host machine "`
 }
 
 // Similar to VolumeSource but meant for the administrator who creates PVs.
@@ -138,6 +140,8 @@ type PersistentVolumeSource struct {
 	HostPath *HostPathVolumeSource `json:"hostPath" description:"a HostPath provisioned by a developer or tester; for develment use only"`
 	// Glusterfs represents a Glusterfs volume that is attached to a host and exposed to the pod
 	Glusterfs *GlusterfsVolumeSource `json:"glusterfs" description:"Glusterfs volume resource provisioned by an admin"`
+	// CinderVolume represents a cinder volume attached and mounted on kubelets host machine
+	CinderVolume *CinderVolumeSource `json:"cinderVolume" description:"Cinder volume that will be attached and mounted on the host machine "`
 }
 
 type PersistentVolumeClaimVolumeSource struct {
@@ -354,6 +358,21 @@ type SecretVolumeSource struct {
 	// Reference to a Secret to use.  Only the ID field of this reference is used; a
 	// secret can only be used by pods in its namespace.
 	Target ObjectReference `json:"target" description:"target is a reference to a secret"`
+}
+
+// CinderVolumeSource represents a cinder volume resource in Openstack.
+// A Cinder volume must exist before mounting to a container.
+// The disk must also be in the same region as the kubelet.
+type CinderVolumeSource struct {
+	// Unique name of the PD resource. Used to identify the disk in cinder volume
+	VolID string `json:"volId"`
+	// Required: Filesystem type to mount.
+	// Must be a filesystem type supported by the host operating system.
+	// Only ext3 and ext4 are allowed
+	FSType string `json:"fsType,omitempty"`
+	// Optional: Defaults to false (read/write). ReadOnly here will force
+	// the ReadOnly setting in VolumeMounts.
+	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
 // ContainerPort represents a network port in a single container

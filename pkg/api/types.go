@@ -205,6 +205,8 @@ type VolumeSource struct {
 	Glusterfs *GlusterfsVolumeSource `json:"glusterfs"`
 	// PersistentVolumeClaimVolumeSource represents a reference to a PersistentVolumeClaim in the same namespace
 	PersistentVolumeClaimVolumeSource *PersistentVolumeClaimVolumeSource `json:"persistentVolumeClaim,omitempty"`
+	// CinderVolume represents a cinder volume attached and mounted on kubelets host machine
+	CinderVolume *CinderVolumeSource `json:"cinderVolume"`
 }
 
 // Similar to VolumeSource but meant for the administrator who creates PVs.
@@ -222,6 +224,8 @@ type PersistentVolumeSource struct {
 	HostPath *HostPathVolumeSource `json:"hostPath"`
 	// Glusterfs represents a Glusterfs volume that is attached to a host and exposed to the pod
 	Glusterfs *GlusterfsVolumeSource `json:"glusterfs"`
+	// CinderVolume represents a cinder volume attached and mounted on kubelets host machine
+	CinderVolume *CinderVolumeSource `json:"cinderVolume"`
 }
 
 type PersistentVolumeClaimVolumeSource struct {
@@ -473,6 +477,21 @@ type GlusterfsVolumeSource struct {
 
 	// Optional: Defaults to false (read/write). ReadOnly here will force
 	// the Glusterfs to be mounted with read-only permissions
+	ReadOnly bool `json:"readOnly,omitempty"`
+}
+
+// CinderVolumeSource represents a cinder volume resource in Openstack.
+// A Cinder volume must exist and be formatted before mounting to a container.
+// The disk must also be in the same region as the kubelet.
+type CinderVolumeSource struct {
+	// Unique uuid of the volume resource. Used to identify the cinder volume
+	VolID string `json:"volId"`
+	// Required: Filesystem type to mount.
+	// Must be a filesystem type supported by the host operating system.
+	// Only ext3 and ext4 are allowed
+	FSType string `json:"fsType,omitempty"`
+	// Optional: Defaults to false (read/write). ReadOnly here will force
+	// the ReadOnly setting in VolumeMounts.
 	ReadOnly bool `json:"readOnly,omitempty"`
 }
 

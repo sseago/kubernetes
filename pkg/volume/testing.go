@@ -22,6 +22,7 @@ import (
 
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/api"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/client"
+	"github.com/GoogleCloudPlatform/kubernetes/pkg/cloudprovider"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/types"
 	"github.com/GoogleCloudPlatform/kubernetes/pkg/util"
 )
@@ -31,10 +32,11 @@ type fakeVolumeHost struct {
 	rootDir    string
 	kubeClient client.Interface
 	pluginMgr  VolumePluginMgr
+	cloud      cloudprovider.Interface
 }
 
 func NewFakeVolumeHost(rootDir string, kubeClient client.Interface, plugins []VolumePlugin) *fakeVolumeHost {
-	host := &fakeVolumeHost{rootDir: rootDir, kubeClient: kubeClient}
+	host := &fakeVolumeHost{rootDir: rootDir, kubeClient: kubeClient, cloud: nil}
 	host.pluginMgr.InitPlugins(plugins, host)
 	return host
 }
@@ -53,6 +55,10 @@ func (f *fakeVolumeHost) GetPodPluginDir(podUID types.UID, pluginName string) st
 
 func (f *fakeVolumeHost) GetKubeClient() client.Interface {
 	return f.kubeClient
+}
+
+func (f *fakeVolumeHost) GetCloudProvider() cloudprovider.Interface {
+	return f.cloud
 }
 
 func (f *fakeVolumeHost) NewWrapperBuilder(spec *Spec, podRef *api.ObjectReference, opts VolumeOptions) (Builder, error) {
