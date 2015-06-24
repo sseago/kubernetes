@@ -1,0 +1,22 @@
+{
+   "kind":"Service",
+   "apiVersion":"v1",
+   "metadata":{
+      "name":"guestbook",
+      "labels":{
+         "name":"guestbook"
+      }
+   },
+   "spec":{
+      "ports": [
+         {
+           "port":3000,
+           "targetPort":"http-server"
+         }
+      ],
+      "selector":{
+         "name":"guestbook"
+      },
+      "type": "LoadBalancer"
+   }
+}
