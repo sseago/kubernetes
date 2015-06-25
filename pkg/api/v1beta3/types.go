@@ -228,6 +228,7 @@ type VolumeSource struct {
 	PersistentVolumeClaim *PersistentVolumeClaimVolumeSource `json:"persistentVolumeClaim,omitempty" description:"a reference to a PersistentVolumeClaim in the same namespace"`
 	// RBD represents a Rados Block Device mount on the host that shares a pod's lifetime
 	RBD *RBDVolumeSource `json:"rbd,omitempty" description:"rados block volume that will be mounted on the host machine"`
+	CinderVolume *CinderVolumeSource `json:"cinderVolume,omitempty" description:"Cinder volume that will be attached and mounted on the host machine "`
 }
 
 type PersistentVolumeClaimVolumeSource struct {
@@ -260,6 +261,7 @@ type PersistentVolumeSource struct {
 	// ISCSI represents an ISCSI Disk resource that is attached to a
 	// kubelet's host machine and then exposed to the pod.
 	ISCSI *ISCSIVolumeSource `json:"iscsi,omitempty" description:"an iSCSI disk resource provisioned by an admin"`
+	CinderVolume *CinderVolumeSource `json:"cinderVolume,omitempty" description:"Cinder volume that will be attached and mounted on the host machine "`
 }
 
 type PersistentVolume struct {
@@ -551,6 +553,21 @@ type ISCSIVolumeSource struct {
 	// Optional: Defaults to false (read/write). ReadOnly here will force
 	// the ReadOnly setting in VolumeMounts.
 	ReadOnly bool `json:"readOnly,omitempty" description:"read-only if true, read-write otherwise (false or unspecified)"`
+}
+
+// CinderVolumeSource represents a cinder volume resource in Openstack.
+// A Cinder volume must exist before mounting to a container.
+// The disk must also be in the same region as the kubelet.
+type CinderVolumeSource struct {
+	// Unique name of the PD resource. Used to identify the disk in cinder volume
+	VolID string `json:"volId"`
+	// Required: Filesystem type to mount.
+	// Must be a filesystem type supported by the host operating system.
+	// Only ext3 and ext4 are allowed
+	FSType string `json:"fsType,omitempty"`
+	// Optional: Defaults to false (read/write). ReadOnly here will force
+	// the ReadOnly setting in VolumeMounts.
+	ReadOnly bool `json:"readOnly,omitempty"`
 }
 
 // ContainerPort represents a network port in a single container.
