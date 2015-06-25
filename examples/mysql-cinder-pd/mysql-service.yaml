@@ -1,5 +1,5 @@
 kind: Service
-apiVersion: v1beta1
+apiVersion: v1
 id: mysql
 # the port that this service should serve on
 port: 3306
